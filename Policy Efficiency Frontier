@@ -1,0 +1,110 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
+# ==========================================================
+# Simulation summary statistics from latest experiment
+# avg_V = E||X||^2  (Lyapunov function mean)
+# ==========================================================
+
+avg_V = {
+    "Max-Weight": 264.002,
+    "Linear": 500296987.705,
+    "ODST": 5672.986
+}
+
+avg_cost = {
+    "Max-Weight": 264.623,
+    "Linear": 500296988.405,
+    "ODST": 5673.492
+}
+
+# Convert backlog proxy
+# E||X|| ≈ sqrt(E||X||^2)
+
+avg_backlog = {k: np.sqrt(v) for k, v in avg_V.items()}
+
+stable_policies = ["Max-Weight", "ODST"]
+
+# ==========================================================
+# Main figure
+# ==========================================================
+
+fig, ax = plt.subplots(figsize=(7,5))
+
+for pol in avg_backlog:
+    x = avg_backlog[pol]
+    y = avg_cost[pol]
+
+    ax.scatter(x, y, s=150)
+    ax.annotate(pol,
+                (x, y),
+                textcoords="offset points",
+                xytext=(8,6),
+                fontsize=10)
+
+# Log scale (essential for this dataset)
+ax.set_xscale("log")
+ax.set_yscale("log")
+
+ax.set_xlabel(r"Average backlog $\mathbb{E}\|X\|$")
+ax.set_ylabel("Average operational cost")
+
+ax.set_title("Policy Efficiency Frontier")
+
+ax.grid(True, which="both", linestyle="--", linewidth=0.5)
+
+# ==========================================================
+# Inset: zoom into stable policies
+# ==========================================================
+
+axins = inset_axes(ax,
+                   width="48%",
+                   height="48%",
+                   loc="lower left",
+                   borderpad=2)
+
+xs = np.array([avg_backlog[p] for p in stable_policies])
+ys = np.array([avg_cost[p] for p in stable_policies])
+
+for pol in stable_policies:
+    x = avg_backlog[pol]
+    y = avg_cost[pol]
+
+    axins.scatter(x, y, s=120)
+
+    axins.annotate(pol,
+                   (x,y),
+                   textcoords="offset points",
+                   xytext=(5,4),
+                   fontsize=9)
+
+# Automatic padding
+x_min, x_max = xs.min(), xs.max()
+y_min, y_max = ys.min(), ys.max()
+
+x_margin = 0.3*(x_max-x_min)
+y_margin = 0.3*(y_max-y_min)
+
+axins.set_xlim(x_min-x_margin, x_max+x_margin)
+axins.set_ylim(y_min-y_margin, y_max+y_margin)
+
+axins.grid(True, linestyle="--", linewidth=0.4)
+
+axins.set_title("Stable region", fontsize=10)
+
+# ==========================================================
+# Footnote explaining backlog proxy
+# ==========================================================
+
+fig.text(
+    0.5,
+    -0.02,
+    r"Note: $\mathbb{E}\|X\|$ is estimated via $\sqrt{\mathbb{E}\|X\|^2}$ from simulation.",
+    ha="center",
+    fontsize=9
+)
+
+plt.tight_layout()
+
+plt.show()
