@@ -22,3 +22,10 @@ Optimality-Induced-Stabilization/
 │
 └── LICENSE (optional)
     Repository license file.
+Mathematical Model:
+The simulations study a stochastic networked resource allocation system in which multiple queues compete for shared service capacity. Arrivals follow a Markov-Modulated Poisson Process (MMPP), allowing the system to alternate between low- and high-demand regimes.
+Optimality-Induced Stabilization Theorem (ODST)
+The manuscript establishes the following principle. Optimality-Induced Stabilization Theorem
+If the control policy minimizes a coercive convex stage cost, subject to the system constraints, then the resulting optimal policy generates a negative Foster–Lyapunov drift outside a compact set.
+Key Insight
+Traditional approaches such as Max-Weight scheduling enforce stability explicitly through queue-based prioritization. The ODST result demonstrates that stability can also arise endogenously from optimal cost minimization when the cost structure is sufficiently coercive. Thus, optimality itself induces stabilization.
