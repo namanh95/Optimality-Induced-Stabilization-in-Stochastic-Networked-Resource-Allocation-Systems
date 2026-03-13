@@ -1,0 +1,188 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+# -------------------------------------------------
+# Output directory
+# -------------------------------------------------
+OUTDIR = Path("./array_figures_final")
+OUTDIR.mkdir(parents=True, exist_ok=True)
+
+# -------------------------------------------------
+# Global parameters
+# -------------------------------------------------
+SEED = 42
+rng = np.random.default_rng(SEED)
+
+# 3-node network parameters
+K_3 = np.array([4.0, 3.0], dtype=float)
+P12 = 0.02
+P21 = 0.08
+
+# MMPP arrival rates
+LAMBDA3_LOW = np.array([0.75, 0.75, 0.75], dtype=float)
+LAMBDA3_HIGH = np.array([2.0, 2.0, 2.0], dtype=float)
+
+# Drift diagnostic threshold
+LARGE_STATE_THRESHOLD = 40.0
+
+
+# -------------------------------------------------
+# MMPP utilities
+# -------------------------------------------------
+def simulate_mmpp_state(T, p12=P12, p21=P21, init_state=0):
+    z = np.zeros(T, dtype=int)
+    z[0] = init_state
+    for t in range(1, T):
+        if z[t - 1] == 0:
+            z[t] = 1 if rng.random() < p12 else 0
+        else:
+            z[t] = 0 if rng.random() < p21 else 1
+    return z
+
+
+def mmpp_arrivals(state, low, high):
+    lam = low if state == 0 else high
+    return rng.poisson(lam)
+
+
+# -------------------------------------------------
+# Feasible-action projection
+# -------------------------------------------------
+def project_three_node_feasible(y):
+    """
+    Project y onto the feasible set:
+        u1 + u2 <= 4
+        u2 + u3 <= 3
+        u >= 0
+    """
+    u = np.maximum(np.asarray(y, dtype=float), 0.0)
+
+    if u[0] + u[1] > K_3[0]:
+        s = K_3[0] / max(u[0] + u[1], 1e-12)
+        u[0] *= s
+        u[1] *= s
+
+    if u[1] + u[2] > K_3[1]:
+        s = K_3[1] / max(u[1] + u[2], 1e-12)
+        u[1] *= s
+        u[2] *= s
+
+    # Re-check first coupled constraint
+    if u[0] + u[1] > K_3[0]:
+        s = K_3[0] / max(u[0] + u[1], 1e-12)
+        u[0] *= s
+        u[1] *= s
+
+    return u
+
+
+# -------------------------------------------------
+# Policies
+# -------------------------------------------------
+def policy_max_weight(x):
+    return project_three_node_feasible(np.asarray(x, dtype=float))
+
+
+def policy_linear_cost(x, alpha=1.0):
+    base = alpha * np.array([0.70, 0.60, 0.55], dtype=float)
+    return project_three_node_feasible(base)
+
+
+def policy_quadratic_odst(x, beta=1.55):
+    x = np.asarray(x, dtype=float)
+    y = beta * np.sqrt(np.maximum(x, 0.0) + 1.0)
+    return project_three_node_feasible(y)
+
+
+# -------------------------------------------------
+# Simulation engine
+# -------------------------------------------------
+def simulate_three_node(policy_name, rho=1.0, T=4000, burn_in=500, beta=1.55):
+    x = np.zeros(3, dtype=float)
+    backlog_norm = np.zeros(T)
+    drifts = []
+
+    mmpp_states = simulate_mmpp_state(T)
+
+    for t in range(T):
+        if policy_name == "Max-Weight":
+            u = policy_max_weight(x)
+        elif policy_name == "Linear Cost":
+            u = policy_linear_cost(x)
+        elif policy_name == "Quadratic (ODST)":
+            u = policy_quadratic_odst(x, beta=beta)
+        else:
+            raise ValueError(f"Unknown policy_name: {policy_name}")
+
+        a = mmpp_arrivals(mmpp_states[t], rho * LAMBDA3_LOW, rho * LAMBDA3_HIGH)
+        x_next = np.maximum(x + a - u, 0.0)
+
+        backlog_norm[t] = np.linalg.norm(x_next)
+
+        if np.linalg.norm(x) >= LARGE_STATE_THRESHOLD:
+            drifts.append(np.linalg.norm(x_next) ** 2 - np.linalg.norm(x) ** 2)
+
+        x = x_next
+
+    return {
+        "traj": backlog_norm,
+        "avg_backlog": float(np.mean(backlog_norm[burn_in:])),
+        "large_state_drift": float(np.mean(drifts)) if drifts else np.nan,
+    }
+
+
+# -------------------------------------------------
+# Figure 4
+# -------------------------------------------------
+def fig4_backlog_trajectories():
+    print("Generating Figure 4...")
+
+    horizon = 4000
+    results = {
+        "Max-Weight": simulate_three_node("Max-Weight", rho=1.20, T=horizon, burn_in=500),
+        "Linear Cost": simulate_three_node("Linear Cost", rho=1.20, T=horizon, burn_in=500),
+        "Quadratic (ODST)": simulate_three_node("Quadratic (ODST)", rho=1.20, T=horizon, burn_in=500, beta=1.55),
+    }
+
+    fig = plt.figure(figsize=(9, 5.5), facecolor="#efefef")
+    ax = fig.add_subplot(111)
+
+    colors = {
+        "Max-Weight": "#0b3b7a",
+        "Linear Cost": "#b22222",
+        "Quadratic (ODST)": "#db6e12",
+    }
+
+    for name, res in results.items():
+        ax.plot(res["traj"], label=name, linewidth=1.8, color=colors[name])
+
+    ax.set_xlabel("Time", fontsize=12)
+    ax.set_ylabel(r"$\|X_t\|$", fontsize=12)
+    ax.set_title("Figure 4. Backlog trajectories under competing allocation policies",
+                 fontsize=15, family="serif", pad=12)
+
+    ax.grid(alpha=0.28, linestyle="--")
+    ax.legend(framealpha=0.92, fontsize=11)
+
+    # light editorial styling
+    ax.set_facecolor("#fbfbfb")
+    for spine in ax.spines.values():
+        spine.set_alpha(0.6)
+
+    plt.tight_layout()
+    plt.savefig(
+        OUTDIR / "figure4_backlog_trajectories.png",
+        dpi=300,
+        facecolor=fig.get_facecolor(),
+        bbox_inches="tight"
+    )
+    plt.close()
+
+
+# -------------------------------------------------
+# Main
+# -------------------------------------------------
+if __name__ == "__main__":
+    fig4_backlog_trajectories()
+    print(f"Saved: {OUTDIR / 'figure4_backlog_trajectories.png'}")
