@@ -1,0 +1,216 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+OUTDIR = Path("./array_figures_final")
+OUTDIR.mkdir(parents=True, exist_ok=True)
+
+
+def fig2_drift_field():
+    print("Generating Figure 2 (refined 3D drift field)...")
+
+    fig = plt.figure(figsize=(8.2, 10.6), facecolor="#efefef")
+    ax = fig.add_subplot(111, projection="3d")
+    ax.set_facecolor((1, 1, 1, 0))
+
+    # Axes ranges chosen to match the reference composition
+    x1_min, x1_max = 8.5, 22.5
+    x2_min, x2_max = 0.8, 2.4
+    z_min, z_max = 0.0, 20.5
+
+    # -------------------------------------------------
+    # Invariant-region center and ellipsoid
+    # -------------------------------------------------
+    c1, c2, c3 = 15.0, 1.55, 12.0
+    a, b, c = 3.0, 0.40, 5.2  # ellipsoid radii
+
+    # -------------------------------------------------
+    # Structured drift field
+    # -------------------------------------------------
+    x1_vals = np.linspace(9.0, 22.0, 11)
+    x2_vals = np.linspace(0.9, 2.3, 9)
+    z_vals = np.linspace(1.0, 19.0, 8)
+
+    X1, X2, Z = np.meshgrid(x1_vals, x2_vals, z_vals, indexing="ij")
+
+    # Ellipsoidal radius relative to K_R
+    re = np.sqrt(((X1 - c1) / a) ** 2 + ((X2 - c2) / b) ** 2 + ((Z - c3) / c) ** 2)
+
+    # Strongly inward field outside K_R, mild inward field inside
+    inward_gain = np.where(re > 1.0, 1.15 + 0.35 * (re - 1.0), 0.45)
+
+    U = -0.34 * inward_gain * (X1 - c1)
+    V = -1.95 * inward_gain * (X2 - c2)
+    W = -0.26 * inward_gain * (Z - c3)
+
+    # Very mild swirl for depth, but no chaotic appearance
+    U += 0.015 * (Z - c3)
+    W += -0.020 * (X1 - c1)
+
+    # Reduce arrows inside ellipsoid for clarity
+    mask_inside = re < 0.92
+    U = np.where(mask_inside, 0.35 * U, U)
+    V = np.where(mask_inside, 0.35 * V, V)
+    W = np.where(mask_inside, 0.35 * W, W)
+
+    # Normalize moderately so arrows stay consistent and readable
+    mag = np.sqrt(U**2 + V**2 + W**2) + 1e-12
+    target_len = np.where(re > 1.0, 0.95, 0.45)
+    Uq = target_len * U / mag
+    Vq = target_len * V / mag
+    Wq = target_len * W / mag
+
+    ax.quiver(
+        X1, X2, Z,
+        Uq, Vq, Wq,
+        length=1.0,
+        normalize=False,
+        color=(0.15, 0.15, 0.15, 0.42),
+        linewidth=0.9,
+        arrow_length_ratio=0.20
+    )
+
+    # -------------------------------------------------
+    # Ellipsoid K_R
+    # -------------------------------------------------
+    u = np.linspace(0, 2 * np.pi, 90)
+    v = np.linspace(0, np.pi, 70)
+    uu, vv = np.meshgrid(u, v)
+
+    Xe = c1 + a * np.cos(uu) * np.sin(vv)
+    Ye = c2 + b * np.sin(uu) * np.sin(vv)
+    Ze = c3 + c * np.cos(vv)
+
+    ax.plot_surface(
+        Xe, Ye, Ze,
+        color="#78b7e8",
+        alpha=0.24,
+        linewidth=0.0,
+        shade=False
+    )
+
+    # outline rings
+    for ang in [0.0, np.pi / 2.8]:
+        t = np.linspace(0, 2 * np.pi, 240)
+        xr = c1 + a * np.cos(t)
+        yr = c2 + b * np.sin(t) * np.cos(ang)
+        zr = c3 + c * np.sin(t) * np.sin(ang)
+        ax.plot(xr, yr, zr, color="#2a6fba", alpha=0.55, linewidth=1.2)
+
+    # center point and internal arrow
+    ax.scatter([c1], [c2], [c3], color="black", s=20)
+    ax.quiver(
+        c1, c2, c3 + 3.2,
+        0.0, 0.0, -6.2,
+        color="black",
+        linewidth=1.1,
+        arrow_length_ratio=0.10
+    )
+    ax.text(c1 - 0.20, c2 + 0.02, c3 + 3.6, r"$K_R$", fontsize=18, family="serif")
+
+    # -------------------------------------------------
+    # Exterior trajectory on right wall
+    # -------------------------------------------------
+    t = np.linspace(0, 1, 150)
+    x1_curve = 16.8 + 5.2 * t
+    x2_curve = np.full_like(t, 2.33)
+    z_curve = 11.6 + 6.2 * (t ** 1.8)
+
+    ax.plot(x1_curve, x2_curve, z_curve, color="#e28743", linewidth=1.7, alpha=0.95)
+    idx = [18, 52, 88, 120]
+    ax.scatter(x1_curve[idx], x2_curve[idx], z_curve[idx], color="#e28743", s=18)
+
+    Xw, Zw = np.meshgrid(np.linspace(16.9, 22.3, 2), np.linspace(4.0, 18.8, 2))
+    Yw = np.full_like(Xw, 2.40)
+    ax.plot_surface(Xw, Yw, Zw, color="#efc3a6", alpha=0.14, shade=False, linewidth=0)
+
+    # -------------------------------------------------
+    # Floor regime shading
+    # -------------------------------------------------
+    def floor_panel(x0, x1, color, alpha):
+        Xp, Yp = np.meshgrid([x0, x1], [x2_min, x2_max])
+        Zp = np.full_like(Xp, z_min)
+        ax.plot_surface(Xp, Yp, Zp, color=color, alpha=alpha, shade=False, linewidth=0)
+
+    floor_panel(8.5, 15.9, "#d9e9f3", 0.24)
+    floor_panel(15.9, 19.4, "#f3ead5", 0.26)
+    floor_panel(19.4, 22.5, "#f3d3cc", 0.28)
+
+    # -------------------------------------------------
+    # Styling
+    # -------------------------------------------------
+    ax.set_title(
+        "Figure 2: Drift field under quadratic policy",
+        fontsize=20, family="serif", pad=26
+    )
+
+    ax.set_xlim(x1_min, x1_max)
+    ax.set_ylim(x2_min, x2_max)
+    ax.set_zlim(z_min, z_max)
+
+    ax.set_xlabel(r"$x_1$", fontsize=16, labelpad=12, family="serif")
+    ax.set_ylabel(r"$x_2$", fontsize=16, labelpad=12, family="serif")
+    ax.set_zlabel(r"$x_1$", fontsize=16, labelpad=12, family="serif")
+
+    ax.set_xticks([10, 14, 18, 22])
+    ax.set_yticks([0.8, 1.2, 1.6, 2.0, 2.4])
+    ax.set_zticks([0, 5, 10, 15, 20])
+
+    ax.tick_params(axis="x", labelsize=12)
+    ax.tick_params(axis="y", labelsize=12)
+    ax.tick_params(axis="z", labelsize=12)
+
+    try:
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+    except Exception:
+        pass
+
+    ax.grid(True, linestyle="--", alpha=0.16)
+
+    # Camera closer to editorial target, but cleaner than before
+    ax.view_init(elev=24, azim=218)
+    try:
+        ax.set_box_aspect((1.48, 1.0, 0.92))
+    except Exception:
+        pass
+
+    # Bottom regime labels
+    box_common = dict(
+        boxstyle="round,pad=0.45,rounding_size=0.08",
+        edgecolor="#cfcfcf",
+        linewidth=1.2
+    )
+
+    fig.text(
+        0.18, 0.11, "Interior Regime",
+        ha="center", va="center", fontsize=16, family="serif",
+        bbox=dict(facecolor="#d9e9f3", **box_common)
+    )
+    fig.text(
+        0.50, 0.11, "Near-Boundary Regime",
+        ha="center", va="center", fontsize=16, family="serif",
+        bbox=dict(facecolor="#f3ead5", **box_common)
+    )
+    fig.text(
+        0.81, 0.11, "Exterior Regime",
+        ha="center", va="center", fontsize=16, family="serif",
+        bbox=dict(facecolor="#f3d3cc", **box_common)
+    )
+
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.90, bottom=0.15, left=0.02, right=0.98)
+    plt.savefig(
+        OUTDIR / "figure2_drift_field.png",
+        dpi=300,
+        facecolor=fig.get_facecolor(),
+        bbox_inches="tight"
+    )
+    plt.close()
+
+
+if __name__ == "__main__":
+    fig2_drift_field()
+    print(f"Saved: {OUTDIR / 'figure2_drift_field.png'}")
