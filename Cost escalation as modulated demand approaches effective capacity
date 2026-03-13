@@ -1,0 +1,195 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+# -------------------------------------------------
+# Output directory
+# -------------------------------------------------
+OUTDIR = Path("./array_figures_final")
+OUTDIR.mkdir(parents=True, exist_ok=True)
+
+# -------------------------------------------------
+# Global parameters
+# -------------------------------------------------
+SEED = 42
+rng = np.random.default_rng(SEED)
+
+# 3-node network parameters
+K_3 = np.array([4.0, 3.0], dtype=float)
+P12 = 0.02
+P21 = 0.08
+
+# MMPP arrival rates
+LAMBDA3_LOW = np.array([0.75, 0.75, 0.75], dtype=float)
+LAMBDA3_HIGH = np.array([2.0, 2.0, 2.0], dtype=float)
+
+
+# -------------------------------------------------
+# MMPP utilities
+# -------------------------------------------------
+def simulate_mmpp_state(T, p12=P12, p21=P21, init_state=0):
+    z = np.zeros(T, dtype=int)
+    z[0] = init_state
+    for t in range(1, T):
+        if z[t - 1] == 0:
+            z[t] = 1 if rng.random() < p12 else 0
+        else:
+            z[t] = 0 if rng.random() < p21 else 1
+    return z
+
+
+def mmpp_arrivals(state, low, high):
+    lam = low if state == 0 else high
+    return rng.poisson(lam)
+
+
+# -------------------------------------------------
+# Feasible-action projection
+# -------------------------------------------------
+def project_three_node_feasible(y):
+    """
+    Project y onto:
+        u1 + u2 <= 4
+        u2 + u3 <= 3
+        u >= 0
+    """
+    u = np.maximum(np.asarray(y, dtype=float), 0.0)
+
+    if u[0] + u[1] > K_3[0]:
+        s = K_3[0] / max(u[0] + u[1], 1e-12)
+        u[0] *= s
+        u[1] *= s
+
+    if u[1] + u[2] > K_3[1]:
+        s = K_3[1] / max(u[1] + u[2], 1e-12)
+        u[1] *= s
+        u[2] *= s
+
+    if u[0] + u[1] > K_3[0]:
+        s = K_3[0] / max(u[0] + u[1], 1e-12)
+        u[0] *= s
+        u[1] *= s
+
+    return u
+
+
+# -------------------------------------------------
+# Policy
+# -------------------------------------------------
+def policy_quadratic_odst(x, beta=1.55):
+    x = np.asarray(x, dtype=float)
+    y = beta * np.sqrt(np.maximum(x, 0.0) + 1.0)
+    return project_three_node_feasible(y)
+
+
+# -------------------------------------------------
+# Simulation engine
+# -------------------------------------------------
+def simulate_three_node(policy_name, rho=1.0, T=8000, burn_in=1500, beta=1.55):
+    x = np.zeros(3, dtype=float)
+    stage_costs = np.zeros(T, dtype=float)
+
+    mmpp_states = simulate_mmpp_state(T)
+
+    for t in range(T):
+        if policy_name == "Quadratic (ODST)":
+            u = policy_quadratic_odst(x, beta=beta)
+        else:
+            raise ValueError(f"Unknown policy_name: {policy_name}")
+
+        a = mmpp_arrivals(mmpp_states[t], rho * LAMBDA3_LOW, rho * LAMBDA3_HIGH)
+        x = np.maximum(x + a - u, 0.0)
+
+        # manuscript-style operational cost proxy
+        stage_costs[t] = float(np.sum(x ** 2))
+
+    return {
+        "avg_cost": float(np.mean(stage_costs[burn_in:])),
+        "cost_traj": stage_costs,
+    }
+
+
+# -------------------------------------------------
+# Figure 5
+# -------------------------------------------------
+def fig5_cost_vs_load():
+    print("Generating Figure 5...")
+
+    rho_values = np.linspace(0.85, 1.65, 11)
+    avg_costs = []
+
+    for rho in rho_values:
+        vals = []
+        for _ in range(6):
+            res = simulate_three_node(
+                "Quadratic (ODST)",
+                rho=rho,
+                T=8000,
+                burn_in=1500,
+                beta=1.55
+            )
+            vals.append(res["avg_cost"])
+        avg_costs.append(np.mean(vals))
+
+    avg_costs = np.asarray(avg_costs, dtype=float)
+
+    fig = plt.figure(figsize=(7.5, 5.5), facecolor="#efefef")
+    ax = fig.add_subplot(111)
+
+    ax.plot(
+        rho_values,
+        avg_costs,
+        marker="o",
+        markersize=5.5,
+        linewidth=2.0,
+        color="#8b5a2b",
+        label=r"Quadratic (ODST)"
+    )
+
+    # Approximate phase threshold
+    threshold = 1.35
+    ax.axvline(
+        threshold,
+        linestyle="--",
+        color="grey",
+        linewidth=1.6,
+        alpha=0.9,
+        label=r"Approx. phase threshold"
+    )
+
+    # Light shaded regions for editorial clarity
+    ax.axvspan(rho_values.min(), threshold, color="#d9e9f3", alpha=0.18)
+    ax.axvspan(threshold, rho_values.max(), color="#f3ead5", alpha=0.20)
+
+    ax.set_xlabel(r"Load multiplier $\rho$", fontsize=12)
+    ax.set_ylabel("Average stage cost", fontsize=12)
+    ax.set_title(
+        "Figure 5. Cost escalation as modulated demand approaches effective capacity",
+        fontsize=15,
+        family="serif",
+        pad=12
+    )
+
+    ax.grid(alpha=0.28, linestyle="--")
+    ax.legend(framealpha=0.92, fontsize=11)
+    ax.set_facecolor("#fbfbfb")
+
+    for spine in ax.spines.values():
+        spine.set_alpha(0.6)
+
+    plt.tight_layout()
+    plt.savefig(
+        OUTDIR / "figure5_cost_vs_load.png",
+        dpi=300,
+        facecolor=fig.get_facecolor(),
+        bbox_inches="tight"
+    )
+    plt.close()
+
+
+# -------------------------------------------------
+# Main
+# -------------------------------------------------
+if __name__ == "__main__":
+    fig5_cost_vs_load()
+    print(f"Saved: {OUTDIR / 'figure5_cost_vs_load.png'}")
