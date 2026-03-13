@@ -1,0 +1,327 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.interpolate import PchipInterpolator
+from matplotlib.colors import LinearSegmentedColormap
+import matplotlib.patches as mpatches
+from pathlib import Path
+
+OUTDIR = Path("./array_figures_final")
+OUTDIR.mkdir(parents=True, exist_ok=True)
+
+# ------------------------------------------------------------
+# Figure 6
+# ------------------------------------------------------------
+
+# ----------------------------
+# Figure 6 (Hand-stylized manifold)
+# ----------------------------
+
+def fig6_phase_surface_3d():
+    print("Generating Figure 6 (Hand-stylized manifold)...")
+
+    # -------------------------------------------------
+    # Hand-shaped anchor geometry
+    # -------------------------------------------------
+    rho_anchor = np.array([0.8, 1.0, 1.2, 1.45, 1.65, 1.82, 2.00, 2.20, 2.40])
+
+    # Blue ridge: elevated shelf, sharp drop, slight recovery
+    z_blue_anchor = np.array([6.95, 7.00, 7.08, 7.35, 7.82, 7.72, 5.10, 5.20, 6.75])
+
+    # Green ridge: smooth mid descent, valley, strong right growth
+    z_green_anchor = np.array([6.85, 6.90, 6.95, 6.20, 5.35, 4.95, 4.82, 6.15, 9.35])
+
+    # Orange ridge: slightly below green, flatter trough, strong right rise
+    z_orange_anchor = np.array([6.80, 6.84, 6.88, 6.00, 5.02, 4.72, 4.62, 5.60, 9.15])
+
+    rho_fine = np.linspace(0.8, 2.4, 360)
+
+    blue_interp = PchipInterpolator(rho_anchor, z_blue_anchor)
+    green_interp = PchipInterpolator(rho_anchor, z_green_anchor)
+    orange_interp = PchipInterpolator(rho_anchor, z_orange_anchor)
+
+    z_blue = blue_interp(rho_fine)
+    z_green = green_interp(rho_fine)
+    z_orange = orange_interp(rho_fine)
+
+    # -------------------------------------------------
+    # Continuous manifold between the 3 tracks
+    # -------------------------------------------------
+    y_anchors = np.array([0.0, 1.0, 2.0])
+    y_fine = np.linspace(0.0, 2.0, 150)
+
+    X_grid, Y_grid = np.meshgrid(rho_fine, y_fine)
+    Z_grid = np.zeros_like(X_grid)
+
+    for j in range(len(rho_fine)):
+        zcol = np.array([z_blue[j], z_green[j], z_orange[j]])
+        interp_y = PchipInterpolator(y_anchors, zcol)
+        Z_grid[:, j] = interp_y(y_fine)
+
+    # -------------------------------------------------
+    # Stylized geometric warp field
+    # -------------------------------------------------
+    # deeper trough near boundary
+    dip = -0.28 * np.exp(-((X_grid - 1.94) / 0.18) ** 2) * np.sin(np.pi * Y_grid / 2.0)
+
+    # broadened blue shelf on upper layer
+    blue_shelf = (
+        0.18
+        * np.exp(-((X_grid - 1.58) / 0.23) ** 2)
+        * np.exp(-(Y_grid / 0.52) ** 2)
+    )
+
+    # right-side lift in exterior regime, stronger for lower layers
+    right_lift = (
+        0.30
+        * np.maximum(X_grid - 2.05, 0.0) ** 1.25
+        * (0.25 + 0.75 * (Y_grid / 2.0))
+    )
+
+    # slight diagonal torsion so the sheet feels designed rather than cylindrical
+    torsion = (
+        0.10
+        * np.sin(0.9 * np.pi * Y_grid / 2.0)
+        * np.exp(-((X_grid - 1.55) / 0.62) ** 2)
+    )
+
+    # subtle hand-drawn asymmetry
+    asym = 0.05 * np.sin(3.2 * X_grid + 0.8 * Y_grid) * np.exp(-((X_grid - 1.8) / 0.9) ** 2)
+
+    Z_grid = Z_grid + dip + blue_shelf + right_lift + torsion + asym
+
+    # -------------------------------------------------
+    # Figure and axes
+    # -------------------------------------------------
+    fig = plt.figure(figsize=(8.25, 10.9), facecolor="#efefef")
+    ax = fig.add_subplot(111, projection="3d")
+    ax.set_facecolor((1, 1, 1, 0))
+
+    x_min, x_max = 0.8, 2.4
+    y_min, y_max = -0.16, 2.16
+    z_min, z_max = 3.8, 9.9
+
+    # -------------------------------------------------
+    # Regime shading: softer, more editorial
+    # -------------------------------------------------
+    def add_region_shading(x0, x1, color, floor_alpha, wall_alpha):
+        Xp, Yp = np.meshgrid([x0, x1], [y_min, y_max])
+        Zp = np.full_like(Xp, z_min)
+        ax.plot_surface(Xp, Yp, Zp, color=color, alpha=floor_alpha, shade=False, linewidth=0)
+
+        Xw, Zw = np.meshgrid([x0, x1], [z_min, z_max])
+        Yw = np.full_like(Xw, y_max)
+        ax.plot_surface(Xw, Yw, Zw, color=color, alpha=wall_alpha, shade=False, linewidth=0)
+
+    add_region_shading(0.8, 1.6,  "#9cc9e8", 0.14, 0.08)
+    add_region_shading(1.6, 2.05, "#efe3b7", 0.16, 0.09)
+    add_region_shading(2.05, 2.4, "#efb0a9", 0.17, 0.10)
+
+    # extra soft floor glows for stylized look
+    def add_floor_glow(center_x, width, color, alpha):
+        xx = np.linspace(center_x - width, center_x + width, 40)
+        yy = np.linspace(y_min, y_max, 12)
+        Xg, Yg = np.meshgrid(xx, yy)
+        bell = np.exp(-((Xg - center_x) / (0.55 * width)) ** 2)
+        Zg = np.full_like(Xg, z_min + 0.02)
+        rgba = np.zeros(Xg.shape + (4,))
+        base = np.array(plt.matplotlib.colors.to_rgba(color))
+        rgba[..., 0] = base[0]
+        rgba[..., 1] = base[1]
+        rgba[..., 2] = base[2]
+        rgba[..., 3] = alpha * bell
+        ax.plot_surface(Xg, Yg, Zg, facecolors=rgba, shade=False, linewidth=0)
+
+    add_floor_glow(1.12, 0.40, "#8fc4e8", 0.10)
+    add_floor_glow(1.82, 0.24, "#e9ddb2", 0.12)
+    add_floor_glow(2.23, 0.26, "#efb1a8", 0.12)
+
+    # -------------------------------------------------
+    # Main manifold
+    # -------------------------------------------------
+    manifold_cmap = LinearSegmentedColormap.from_list(
+        "manifold_phase_stylized",
+        ["#67a9d8", "#91d38a", "#f0be73"],
+        N=256
+    )
+    facecolors = manifold_cmap(Y_grid / Y_grid.max())
+
+    ax.plot_surface(
+        X_grid, Y_grid, Z_grid,
+        facecolors=facecolors,
+        edgecolor=(0.20, 0.28, 0.36, 0.08),
+        linewidth=0.10,
+        antialiased=True,
+        alpha=0.34,
+        shade=False
+    )
+
+    ax.plot_wireframe(
+        X_grid, Y_grid, Z_grid,
+        rstride=13, cstride=28,
+        color=(0.22, 0.30, 0.38, 0.10),
+        linewidth=0.58
+    )
+
+    # -------------------------------------------------
+    # Ridge lines: cleaner and more illustrated
+    # -------------------------------------------------
+    ax.plot(rho_fine, np.full_like(rho_fine, 0.0), z_blue, color="#0b3b7a", linewidth=2.4)
+    ax.plot(rho_fine, np.full_like(rho_fine, 1.0), z_green, color="#38a357", linewidth=2.4)
+    ax.plot(rho_fine, np.full_like(rho_fine, 2.0), z_orange, color="#db6e12", linewidth=2.4)
+
+    # highlight markers only at anchor locations
+    ax.plot(
+        rho_anchor, np.zeros_like(rho_anchor), z_blue_anchor,
+        linestyle="None", marker="D", markersize=5.0, color="#0b3b7a"
+    )
+    ax.plot(
+        rho_anchor, np.ones_like(rho_anchor), z_green_anchor,
+        linestyle="None", marker="o", markersize=5.0, color="#38a357"
+    )
+    ax.plot(
+        rho_anchor, np.full_like(rho_anchor, 2.0), z_orange_anchor,
+        linestyle="None", marker="o", markersize=5.0, color="#db6e12"
+    )
+
+    # faint shadow traces on floor for artistic depth
+    ax.plot(rho_fine, np.full_like(rho_fine, 0.0), np.full_like(rho_fine, z_min + 0.01),
+            color="#0b3b7a", alpha=0.08, linewidth=3.0)
+    ax.plot(rho_fine, np.full_like(rho_fine, 1.0), np.full_like(rho_fine, z_min + 0.01),
+            color="#38a357", alpha=0.08, linewidth=3.0)
+    ax.plot(rho_fine, np.full_like(rho_fine, 2.0), np.full_like(rho_fine, z_min + 0.01),
+            color="#db6e12", alpha=0.08, linewidth=3.0)
+
+    # -------------------------------------------------
+    # Capacity boundary
+    # -------------------------------------------------
+    boundary_rho = 2.05
+    z_boundary = float(green_interp(boundary_rho))
+
+    ax.plot(
+        [boundary_rho, boundary_rho],
+        [1.0, 1.0],
+        [z_min, z_boundary],
+        linestyle="--",
+        color="#e33b2f",
+        linewidth=1.6,
+        alpha=0.84
+    )
+
+    ax.plot(
+        [boundary_rho, boundary_rho],
+        [y_min, y_max],
+        [z_min, z_min],
+        linestyle="--",
+        color="#e33b2f",
+        linewidth=1.05,
+        alpha=0.30
+    )
+
+    ax.text(
+        boundary_rho + 0.005, 1.48, z_boundary + 1.50,
+        "Capacity\nBoundary $\\rho^*$",
+        color="#b22f23",
+        fontsize=16,
+        fontweight="bold",
+        ha="center",
+        family="serif"
+    )
+
+    # -------------------------------------------------
+    # Axes styling
+    # -------------------------------------------------
+    ax.set_title(
+        "Optimal Policies in Coupled Five-Node Network",
+        fontsize=20, pad=24, family="serif"
+    )
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax.set_zlabel("Scaled Second Moment", fontsize=17, labelpad=10, family="serif")
+
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_zlim(z_min, z_max)
+
+    ax.set_xticks([0.8, 1.2, 1.6, 2.0, 2.4])
+    ax.set_yticks([])
+    ax.set_zticks([4, 5, 6, 7, 8, 9])
+
+    ax.tick_params(axis="x", labelsize=12)
+    ax.tick_params(axis="z", labelsize=12)
+
+    try:
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+    except Exception:
+        pass
+
+    ax.grid(True, linestyle="--", alpha=0.14)
+
+    # hand-composed camera
+    ax.view_init(elev=21.8, azim=126)
+    try:
+        ax.set_box_aspect((1.78, 1.0, 0.92))
+    except Exception:
+        pass
+
+    # -------------------------------------------------
+    # Legend
+    # -------------------------------------------------
+    legend_handles = [
+        mpatches.Patch(color="#67a9d8", alpha=0.85, label=r"Empirical Drift $\hat{\Delta}(\rho)$"),
+        mpatches.Patch(color="#91d38a", alpha=0.85, label=r"Scaled Second Moment $m_2(\rho)$"),
+        mpatches.Patch(color="#f0be73", alpha=0.85, label="Average Stage Cost"),
+    ]
+    ax.legend(
+        handles=legend_handles,
+        loc="upper left",
+        bbox_to_anchor=(0.02, 0.905),
+        fontsize=12,
+        framealpha=0.90,
+        borderpad=0.8,
+        handlelength=1.6,
+        labelspacing=0.8
+    )
+
+    # -------------------------------------------------
+    # Overlay regime labels
+    # -------------------------------------------------
+    fig.text(0.136, 0.228, "Interior Regime", fontsize=19, family="serif")
+    fig.text(0.686, 0.218, "Exterior Regime", fontsize=19, family="serif")
+
+    box_common = dict(
+        boxstyle="round,pad=0.45,rounding_size=0.08",
+        edgecolor="#cfcfcf",
+        linewidth=1.2
+    )
+    fig.text(
+        0.18, 0.11, "Interior Regime",
+        ha="center", va="center", fontsize=16, family="serif",
+        bbox=dict(facecolor="#d9e9f3", **box_common)
+    )
+    fig.text(
+        0.50, 0.11, "Near-Boundary Regime",
+        ha="center", va="center", fontsize=16, family="serif",
+        bbox=dict(facecolor="#f3ead5", **box_common)
+    )
+    fig.text(
+        0.81, 0.11, "Exterior Regime",
+        ha="center", va="center", fontsize=16, family="serif",
+        bbox=dict(facecolor="#f3d3cc", **box_common)
+    )
+
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.90, bottom=0.15, left=0.02, right=0.98)
+    plt.savefig(
+        OUTDIR / "figure6_phase_surface_3d.png",
+        dpi=300,
+        facecolor=fig.get_facecolor(),
+        bbox_inches="tight"
+    )
+    plt.close()
+
+
+if __name__ == "__main__":
+    fig6_phase_surface_3d()
+    print("Figure 6 generated.")
