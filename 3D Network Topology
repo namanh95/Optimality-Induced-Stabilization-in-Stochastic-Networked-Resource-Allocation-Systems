@@ -1,0 +1,196 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+OUTDIR = Path("./array_figures_final")
+OUTDIR.mkdir(parents=True, exist_ok=True)
+
+
+def draw_3d_arrow(ax, start, end, color="black", lw=2.0, alpha=1.0):
+    start = np.array(start, dtype=float)
+    end = np.array(end, dtype=float)
+    d = end - start
+    ax.quiver(
+        start[0], start[1], start[2],
+        d[0], d[1], d[2],
+        arrow_length_ratio=0.12,
+        color=color,
+        linewidth=lw,
+        alpha=alpha
+    )
+
+
+def fig3_network_topology_3d():
+    print("Generating Figure 3 (3D network topology)...")
+
+    fig = plt.figure(figsize=(10.2, 7.8), facecolor="#efefef")
+    ax = fig.add_subplot(111, projection="3d")
+    ax.set_facecolor((1, 1, 1, 0))
+
+    # -------------------------------------------------
+    # Node coordinates
+    # -------------------------------------------------
+    n1 = np.array([0.0, 0.0, 0.0])
+    n2 = np.array([1.7, 1.25, 0.9])
+    n3 = np.array([3.4, 0.0, 0.0])
+    nodes = np.vstack([n1, n2, n3])
+
+    # -------------------------------------------------
+    # Floor panel
+    # -------------------------------------------------
+    Xf, Yf = np.meshgrid(np.linspace(-0.7, 4.1, 2), np.linspace(-0.95, 2.05, 2))
+    Zf = np.full_like(Xf, -0.45)
+    ax.plot_surface(Xf, Yf, Zf, color="#dfe8ef", alpha=0.32, shade=False, linewidth=0)
+
+    # -------------------------------------------------
+    # Nodes
+    # -------------------------------------------------
+    ax.scatter(
+        nodes[:, 0], nodes[:, 1], nodes[:, 2],
+        s=1500, color="#8ec1e6", edgecolor="#2a6fba", linewidth=1.8, alpha=0.98
+    )
+
+    node_bbox = dict(boxstyle="round,pad=0.20", fc="#f4f4f4", ec="none", alpha=0.9)
+
+    # Node labels in 3D are still fine because they are short
+    ax.text(n1[0], n1[1], n1[2] + 0.34, "Node 1",
+            ha="center", va="center", fontsize=13, family="serif", bbox=node_bbox)
+    ax.text(n2[0], n2[1], n2[2] + 0.34, "Node 2",
+            ha="center", va="center", fontsize=13, family="serif", bbox=node_bbox)
+    ax.text(n3[0], n3[1], n3[2] + 0.34, "Node 3",
+            ha="center", va="center", fontsize=13, family="serif", bbox=node_bbox)
+
+    # -------------------------------------------------
+    # Directed edges
+    # -------------------------------------------------
+    draw_3d_arrow(ax, n1, n2, color="#0b3b7a", lw=2.2)
+    draw_3d_arrow(ax, n2, n3, color="#0b3b7a", lw=2.2)
+    draw_3d_arrow(ax, n1, n3, color="#db6e12", lw=2.3)
+
+    # Edge labels in 3D, but moved farther outward
+    m12 = 0.52 * n1 + 0.48 * n2
+    m23 = 0.48 * n2 + 0.52 * n3
+    m13 = 0.52 * n1 + 0.48 * n3
+
+    edge_bbox = dict(boxstyle="round,pad=0.18", fc="white", ec="none", alpha=0.82)
+
+    ax.text(m12[0] - 0.34, m12[1] + 0.30, m12[2] + 0.12, r"$u_1$",
+            fontsize=14, family="serif", bbox=edge_bbox)
+    ax.text(m23[0] + 0.30, m23[1] + 0.24, m23[2] + 0.12, r"$u_2$",
+            fontsize=14, family="serif", bbox=edge_bbox)
+    ax.text(m13[0], m13[1] - 0.52, m13[2] + 0.04, r"$u_3$",
+            fontsize=14, family="serif", bbox=edge_bbox)
+
+    # -------------------------------------------------
+    # Input flow arrows
+    # -------------------------------------------------
+    lam1_start = n1 + np.array([-0.35, -0.68, 0.85])
+    lam2_start = n2 + np.array([-0.20, 0.72, 0.85])
+    lam3_start = n3 + np.array([0.42, -0.68, 0.85])
+
+    draw_3d_arrow(ax, lam1_start, n1 + np.array([-0.03, -0.10, 0.12]), color="#31a354", lw=2.0, alpha=0.95)
+    draw_3d_arrow(ax, lam2_start, n2 + np.array([-0.03, 0.10, 0.12]), color="#31a354", lw=2.0, alpha=0.95)
+    draw_3d_arrow(ax, lam3_start, n3 + np.array([0.03, -0.10, 0.12]), color="#31a354", lw=2.0, alpha=0.95)
+
+    # -------------------------------------------------
+    # Coupled capacity constraints
+    # -------------------------------------------------
+    c1_pts = np.vstack([
+        n1 + np.array([0.10, 0.12, -0.10]),
+        n2 + np.array([-0.08, 0.10, -0.08]),
+        n3 + np.array([-1.55, 0.20, -0.15])
+    ])
+    ax.plot(c1_pts[:, 0], c1_pts[:, 1], c1_pts[:, 2], color="#5ea2d3", linewidth=2.2, alpha=0.65)
+
+    c2_pts = np.vstack([
+        n1 + np.array([1.55, -0.05, -0.15]),
+        n2 + np.array([0.08, -0.05, -0.05]),
+        n3 + np.array([-0.08, 0.08, -0.10])
+    ])
+    ax.plot(c2_pts[:, 0], c2_pts[:, 1], c2_pts[:, 2], color="#f0b96c", linewidth=2.2, alpha=0.75)
+
+    # -------------------------------------------------
+    # Soft shadow traces
+    # -------------------------------------------------
+    for p, q, col in [(n1, n2, "#0b3b7a"), (n2, n3, "#0b3b7a"), (n1, n3, "#db6e12")]:
+        xx = np.linspace(p[0], q[0], 80)
+        yy = np.linspace(p[1], q[1], 80)
+        zz = np.full_like(xx, -0.43)
+        ax.plot(xx, yy, zz, color=col, alpha=0.08, linewidth=3.0)
+
+    # -------------------------------------------------
+    # Styling
+    # -------------------------------------------------
+    ax.set_title(
+        "Figure 3. Three-node stochastic network with coupled resource constraints",
+        fontsize=18, family="serif", pad=20
+    )
+
+    ax.set_xlim(-0.65, 4.05)
+    ax.set_ylim(-0.92, 2.02)
+    ax.set_zlim(-0.45, 2.18)
+
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_zticks([])
+
+    try:
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+    except Exception:
+        pass
+
+    ax.grid(True, linestyle="--", alpha=0.12)
+
+    ax.view_init(elev=20, azim=-58)
+    try:
+        ax.set_box_aspect((1.95, 1.15, 0.92))
+    except Exception:
+        pass
+
+    # -------------------------------------------------
+    # 2D overlay labels for long text
+    # -------------------------------------------------
+    overlay_bbox = dict(boxstyle="round,pad=0.28", fc="white", ec="#d0d0d0", alpha=0.92)
+
+    # Input-flow labels moved out of 3D into stable overlay positions
+    ax.text2D(0.08, 0.26, r"Input flow $\lambda_1(t)$",
+              transform=ax.transAxes, fontsize=12, family="serif", bbox=overlay_bbox)
+    ax.text2D(0.37, 0.74, r"Input flow $\lambda_2(t)$",
+              transform=ax.transAxes, fontsize=12, family="serif", bbox=overlay_bbox)
+    ax.text2D(0.73, 0.27, r"Input flow $\lambda_3(t)$",
+              transform=ax.transAxes, fontsize=12, family="serif", bbox=overlay_bbox)
+
+    # Capacity constraints also moved to overlay text
+    ax.text2D(0.18, 0.58, r"$u_1+u_2\leq K_1=4$",
+              transform=ax.transAxes, fontsize=12.5, family="serif",
+              color="#1f4e79", bbox=overlay_bbox)
+    ax.text2D(0.66, 0.52, r"$u_2+u_3\leq K_2=3$",
+              transform=ax.transAxes, fontsize=12.5, family="serif",
+              color="#a35a00", bbox=overlay_bbox)
+
+    # Subtle leader lines in figure coordinates for readability
+    line_kw = dict(transform=fig.transFigure, color="#9a9a9a", linewidth=1.0, alpha=0.7)
+    fig.lines.extend([
+        plt.Line2D([0.16, 0.22], [0.30, 0.38], **line_kw),  # lambda1
+        plt.Line2D([0.47, 0.46], [0.74, 0.67], **line_kw),  # lambda2
+        plt.Line2D([0.78, 0.72], [0.31, 0.37], **line_kw),  # lambda3
+        plt.Line2D([0.30, 0.37], [0.60, 0.55], **line_kw),  # K1
+        plt.Line2D([0.70, 0.62], [0.54, 0.50], **line_kw),  # K2
+    ])
+
+    plt.tight_layout()
+    plt.savefig(
+        OUTDIR / "figure3_network_topology_3d.png",
+        dpi=300,
+        facecolor=fig.get_facecolor(),
+        bbox_inches="tight"
+    )
+    plt.close()
+
+
+if __name__ == "__main__":
+    fig3_network_topology_3d()
+    print(f"Saved: {OUTDIR / 'figure3_network_topology_3d.png'}")
