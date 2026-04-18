@@ -1,0 +1,22 @@
+import numpy as np
+from scipy.optimize import linprog
+
+def policy_dpp(x, A, K, B, d, V):
+    """
+    Computes the Drift-Plus-Penalty action.
+    x: current state (backlog)
+    A, K: capacity constraint matrix and vector (A*u <= K)
+    B: service mapping matrix
+    d: linear routing cost vector
+    V: trade-off parameter (tune this, e.g., V=100)
+    """
+    # Objective: Minimize (V*d - B^T * x)^T * u
+    c = V * d - B.T @ x
+    
+    # Solve the Linear Program
+    res = linprog(c, A_ub=A, b_ub=K, bounds=(0, None), method='highs')
+    
+    if res.success:
+        return res.x
+    else:
+        return np.zeros(len(d)) # Safe fallback
